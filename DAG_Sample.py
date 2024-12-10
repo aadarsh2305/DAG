@@ -2,6 +2,7 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.dummy import DummyOperator
 from airflow.utils.dates import days_ago
+from airflow.operators.email import EmailOperator
 import os
 from nbconvert import ScriptExporter
 from nbformat import read
@@ -64,6 +65,16 @@ task2 = BashOperator(
     dag=dag,
 )
 
+error_notification = EmailOperator(
+    task_id='send_error_email',
+    to='silara3333@iminko.com',
+    subject='PPM DAG Failure Alert',
+    html_content="""<h3>Error in PPM DAG Execution</h3>
+                    <p>The task {{ task_instance.task_id }} has failed.</p>
+                    <p>Please check the Airflow logs for more details.</p>""",
+    dag=dag,
+)
+
 end = DummyOperator(
     task_id='end',
     dag=dag,
@@ -71,4 +82,8 @@ end = DummyOperator(
 
 
 # Set dependencies if needed
-start >> task1 >> task2 >> end
+start >> task1
+task1 >> task2
+task1 >> error_notification
+task2 >> end
+task2 >> error_notification

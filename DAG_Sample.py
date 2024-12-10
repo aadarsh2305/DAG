@@ -38,8 +38,8 @@ script_2 = convert_notebook_to_py(notebook_2_path, PY_SCRIPTS_DIR)
 
 
 dag = DAG(
-    dag_id = 'PPM_DAG',
-    dag_display_name  = 'PPM DAG',
+    dag_id = 'PPM_MASTER_DAG',
+    dag_display_name  = 'PPM MASTER DAG',
     description='DAG to run migrated ppm pyspark jobs',
     schedule_interval=None,  # Trigger manually
     start_date=days_ago(1),

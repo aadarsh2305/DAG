@@ -2,13 +2,13 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.dummy import DummyOperator
 from airflow.utils.dates import days_ago
-from airflow.operators.email import EmailOperator
+from airflow.utils.email import send_email
+from airflow.utils.trigger_rule import TriggerRule
 import os
 from nbconvert import ScriptExporter
 from nbformat import read
 
 # Base path for your PySpark job notebooks and temporary converted Python scripts
-# NOTEBOOKS_DIR = "../../pyspark_notebooks"
 PY_SCRIPTS_DIR = "/home/innv1admn/migrated_scripts"
 
 # Function to convert notebooks to Python scripts
@@ -33,19 +33,26 @@ os.makedirs(PY_SCRIPTS_DIR, exist_ok=True)
 notebook_1_path = "/home/innv1admn/pyspark_notebooks/DailyPPMGMA.ipynb"
 notebook_2_path = "/home/innv1admn/pyspark_notebooks/talendtopysparkgit.ipynb"
 
-
 script_1 = convert_notebook_to_py(notebook_1_path, PY_SCRIPTS_DIR)
 script_2 = convert_notebook_to_py(notebook_2_path, PY_SCRIPTS_DIR)
 
+# Function to send email notifications on failure
+def send_failure_email(context):
+    subject = f"Task Failed: {context['task_instance'].task_id}"
+    message = f"Task {context['task_instance'].task_id} failed in DAG {context['dag'].dag_id}. Please check the logs for more details."
+    send_email(to='your-email@example.com', subject=subject, html_content=message)
 
 dag = DAG(
-    dag_id = 'PPM_MASTER_DAG',
-    dag_display_name  = 'PPM MASTER DAG',
-    description='DAG to run migrated ppm pyspark jobs',
+    dag_id='PPM_MASTER_DAG',
+    dag_display_name='PPM MASTER DAG',
+    description='DAG to run migrated PPM pyspark jobs',
     schedule_interval=None,  # Trigger manually
     start_date=days_ago(1),
     catchup=False,
-    tags = ['PPM','PySpark']
+    tags=['PPM', 'PySpark'],
+    default_args={
+        'on_failure_callback': send_failure_email,  # Send email on failure
+    }
 )
 
 start = DummyOperator(
@@ -65,25 +72,18 @@ task2 = BashOperator(
     dag=dag,
 )
 
-error_notification = EmailOperator(
-    task_id='send_error_email',
-    to='silara3333@iminko.com',
-    subject='PPM DAG Failure Alert',
-    html_content="""<h3>Error in PPM DAG Execution</h3>
-                    <p>The task {{ task_instance.task_id }} has failed.</p>
-                    <p>Please check the Airflow logs for more details.</p>""",
-    dag=dag,
-)
-
 end = DummyOperator(
     task_id='end',
     dag=dag,
 )
 
-
-# Set dependencies if needed
+# Set dependencies with conditional execution
 start >> task1
-task1 >> task2
-task1 >> error_notification
-task2 >> end
-task2 >> error_notification
+task1 >> task2  # task2 will run only if task1 succeeds
+task1.on_failure_callback = send_failure_email  # Send email on failure of task1
+task2.on_failure_callback = send_failure_email  # Send email on failure of task2
+task2 >> end  # task2 will run before end if it succeeds
+
+# Set task dependencies with failure handling
+task1.trigger_rule = TriggerRule.ALL_SUCCESS  # task1 runs only if start is successful
+task2.trigger_rule = TriggerRule.ALL_SUCCESS  # task2 runs only if task1 is successful

@@ -2,7 +2,6 @@ import logging
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.dummy import DummyOperator
-from airflow.operators.email import EmailOperator
 from airflow.utils.dates import days_ago
 import os
 from nbconvert import ScriptExporter
@@ -80,15 +79,9 @@ def log_error_to_file(context):
 
         # Log to Airflow console
         logging.error(error_message)
-        print(error_message)
     except Exception as e:
         # Handle exceptions during logging
         logging.error(f"Failed to log error: {e}")
-        print(f"Failed to log error: {e}")
-
-    # Log to Airflow console
-    logging.error(error_message)
-    print(error_message)
 
 # Define the DAG
 dag = DAG(
@@ -107,13 +100,13 @@ start = DummyOperator(
     dag=dag,
 )
 
-error = DummyOperator(
-    task_id='error',
+end = DummyOperator(
+    task_id='end',
     dag=dag,
 )
 
-end = DummyOperator(
-    task_id='end',
+error = DummyOperator(
+    task_id='error',
     dag=dag,
 )
 
@@ -121,7 +114,7 @@ def create_task(task_id, script_path, ui_port):
     return BashOperator(
         task_id=task_id,
         bash_command=f"spark-submit --conf spark.ui.port={ui_port} --jars /usr/share/java/mysql-connector-java-9.1.0.jar {script_path}",
-        on_failure_callback=lambda context: error,  # Redirect to error block on failure
+        on_failure_callback=log_error_to_file,
         dag=dag,
     )
 
